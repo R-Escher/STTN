@@ -71,6 +71,18 @@ def read_mask(mpath):
         masks.append(Image.fromarray(m*255))
     return masks
 
+def read_images(impath):
+    images = []
+    imnames = os.listdir(impath)
+    imnames.sort()
+    for im in imnames: 
+        im = Image.open(os.path.join(impath, im))
+        im = im.resize((w, h), Image.NEAREST)
+        im = np.array(im.convert('L'))
+        #im = np.array(im > 0).astype(np.uint8) # já é feito em main_workers
+        im = cv2.dilate(im, cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3)), iterations=4)
+        images.append(Image.fromarray(im*255))
+    return images
 
 #  read frames from video 
 def read_frame_from_videos(vname):
@@ -98,7 +110,13 @@ def main_worker():
     model.eval()
 
     # prepare dataset, encode all frames into deep space 
-    frames = read_frame_from_videos(args.video)
+    #frames = read_frame_from_videos(args.video)
+    
+    ### mudar para ler imagens
+    ## args.video deve conter pasta com imagens
+    frames = read_images(args.video)
+    ###
+    
     video_length = len(frames)
     feats = _to_tensors(frames).unsqueeze(0)*2-1
     frames = [np.array(f).astype(np.uint8) for f in frames]
