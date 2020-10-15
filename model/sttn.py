@@ -99,14 +99,16 @@ class InpaintGenerator(BaseNetwork):
             self.init_weights()
 
     def forward(self, masked_frames, masks):
-        # extracting features
+        # extracting features: numofbatches?, numberofframes?, channels (rgb:3), height, width
         b, t, c, h, w = masked_frames.size()
         masks = masks.view(b*t, 1, h, w)
+        # runs through encoder
         enc_feat = self.encoder(masked_frames.view(b*t, c, h, w))
         _, c, h, w = enc_feat.size()
         masks = F.interpolate(masks, scale_factor=1.0/4)
-        enc_feat = self.transformer(
-            {'x': enc_feat, 'm': masks, 'b': b, 'c': c})['x']
+        # runs through transformer
+        enc_feat = self.transformer( {'x': enc_feat, 'm': masks, 'b': b, 'c': c} )['x']
+        # runs through decoder
         output = self.decoder(enc_feat)
         output = torch.tanh(output)
         return output
@@ -116,8 +118,7 @@ class InpaintGenerator(BaseNetwork):
         masks = masks.view(t, c, h, w)
         masks = F.interpolate(masks, scale_factor=1.0/4)
         t, c, _, _ = feat.size()
-        enc_feat = self.transformer(
-            {'x': feat, 'm': masks, 'b': 1, 'c': c})['x']
+        enc_feat = self.transformer( {'x': feat, 'm': masks, 'b': 1, 'c': c} )['x']
         return enc_feat
 
 
@@ -144,8 +145,7 @@ class Attention(nn.Module):
     """
 
     def forward(self, query, key, value, m):
-        scores = torch.matmul(query, key.transpose(-2, -1)
-                              ) / math.sqrt(query.size(-1))
+        scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(query.size(-1))
         scores.masked_fill(m, -1e9)
         p_attn = F.softmax(scores, dim=-1)
         p_val = torch.matmul(p_attn, value)
@@ -160,35 +160,52 @@ class MultiHeadedAttention(nn.Module):
     def __init__(self, patchsize, d_model):
         super().__init__()
         self.patchsize = patchsize
-        self.query_embedding = nn.Conv2d(
-            d_model, d_model, kernel_size=1, padding=0)
-        self.value_embedding = nn.Conv2d(
-            d_model, d_model, kernel_size=1, padding=0)
-        self.key_embedding = nn.Conv2d(
-            d_model, d_model, kernel_size=1, padding=0)
+        
+        # calculates query, key and value vectors from encoder features
+        self.query_embedding = nn.Conv2d(d_model, d_model, kernel_size=1, padding=0)
+        self.value_embedding = nn.Conv2d(d_model, d_model, kernel_size=1, padding=0)
+        self.key_embedding   = nn.Conv2d(d_model, d_model, kernel_size=1, padding=0)
+
         self.output_linear = nn.Sequential(
             nn.Conv2d(d_model, d_model, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True))
         self.attention = Attention()
 
     def forward(self, x, m, b, c):
+        """ x: features from encoder,\n\n m: masks (plural),\n\n b: number of batches,\n\n c: channel (rgb:3)"""
         bt, _, h, w = x.size()
         t = bt // b
         d_k = c // len(self.patchsize)
         output = []
+        ##
+        ### EMBEDDING STEP (1): "features from each frame are mapped into query and memory (key-value)".
+        ##
         _query = self.query_embedding(x)
         _key = self.key_embedding(x)
         _value = self.value_embedding(x)
         for (width, height), query, key, value in zip(self.patchsize,
-                                                      torch.chunk(_query, len(self.patchsize), dim=1), torch.chunk(
-                                                          _key, len(self.patchsize), dim=1),
+                                                      torch.chunk(_query, len(self.patchsize), dim=1), 
+                                                      torch.chunk(_key,   len(self.patchsize), dim=1),
                                                       torch.chunk(_value, len(self.patchsize), dim=1)):
+            ##
+            ### MATCHING STEP (2): "we first extract spatial patches of shape [r1 x r2 x c] from the 
+            ### query/key/value feature of each frame, and we obtain [N = T x h/r1 x w/r2] patches."
+            ##
             out_w, out_h = w // width, h // height
+            # m -> b, t, 1 (channel), h, w
             mm = m.view(b, t, 1, out_h, height, out_w, width)
+            '''
+            mm is m with its images sizes reduced.
+            
+            Example: 
+                First patch is (108, 60). if m is (540, 300), mm will contain (540/108 = 5) slices of m.
+                So if, lets say, m is (2, 5, 1, 540, 300),
+                then mm will be (2, 5, 1, 5, 108, 5, 60).
+            '''
             mm = mm.permute(0, 1, 3, 5, 2, 4, 6).contiguous().view(
                 b,  t*out_h*out_w, height*width)
             mm = (mm.mean(-1) > 0.5).unsqueeze(1).repeat(1, t*out_h*out_w, 1)
-            # 1) embedding and reshape
+
             query = query.view(b, t, d_k, out_h, height, out_w, width)
             query = query.permute(0, 1, 3, 5, 2, 4, 6).contiguous().view(
                 b,  t*out_h*out_w, d_k*height*width)
@@ -207,7 +224,10 @@ class MultiHeadedAttention(nn.Module):
             y = torch.cat(tmp1,1)
             '''
             y, _ = self.attention(query, key, value, mm)
-            # 3) "Concat" using a view and apply a final linear.
+            ##
+            ### ATTENDING STEP (3): After receiving the output for all patches, we piece all patches
+            ### together and reshape them into T frames with original spatial size h x w x c.
+            ##
             y = y.view(b, t, out_h, out_w, d_k, height, width)
             y = y.permute(0, 1, 4, 2, 5, 3, 6).contiguous().view(bt, d_k, h, w)
             output.append(y)
@@ -243,6 +263,7 @@ class TransformerBlock(nn.Module):
         self.feed_forward = FeedForward(hidden)
 
     def forward(self, x):
+        # features.from.encoder, masks (plural), number.of.batches?, channels (rgb:3)
         x, m, b, c = x['x'], x['m'], x['b'], x['c']
         x = x + self.attention(x, m, b, c)
         x = x + self.feed_forward(x)
@@ -254,6 +275,7 @@ class TransformerBlock(nn.Module):
 
 
 class Discriminator(BaseNetwork):
+    """T-PatchGAN"""
     def __init__(self, in_channels=3, use_sigmoid=False, use_spectral_norm=True, init_weights=True):
         super(Discriminator, self).__init__()
         self.use_sigmoid = use_sigmoid
@@ -299,6 +321,7 @@ class Discriminator(BaseNetwork):
 
 
 def spectral_norm(module, mode=True):
+    """Applies spectral normalization if mode=True. Otherwise just returns 'module' unchanged."""
     if mode:
         return _spectral_norm(module)
     return module
