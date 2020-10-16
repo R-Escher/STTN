@@ -3,10 +3,10 @@ release_model
 *.log
 debug.py
 *.avi
+*.mp4
 .ipynb_checkpoints
 *.DS_Store
 checkpoints
-examples/*_result.mp4
 *.jpg
 *.png
 *.zip

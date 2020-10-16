@@ -125,28 +125,29 @@ class Trainer():
     # load netG and netD
     def load(self):
         model_path = self.config['save_dir']
-        if os.path.isfile(os.path.join(model_path, 'latest.ckpt')):
-            latest_epoch = open(os.path.join(
-                model_path, 'latest.ckpt'), 'r').read().splitlines()[-1]
+        
+        # latest.ckpt just stores the epoch it last stopped
+        if os.path.isfile( os.path.join(model_path, 'latest.ckpt') ):
+            latest_epoch = open( os.path.join(model_path, 'latest.ckpt'), 'r' ).read().splitlines()[-1]
         else:
             ckpts = [os.path.basename(i).split('.pth')[0] for i in glob.glob(
                 os.path.join(model_path, '*.pth'))]
             ckpts.sort()
             latest_epoch = ckpts[-1] if len(ckpts) > 0 else None
         if latest_epoch is not None:
-            gen_path = os.path.join(
-                model_path, 'gen_{}.pth'.format(str(latest_epoch).zfill(5)))
-            dis_path = os.path.join(
-                model_path, 'dis_{}.pth'.format(str(latest_epoch).zfill(5)))
-            opt_path = os.path.join(
-                model_path, 'opt_{}.pth'.format(str(latest_epoch).zfill(5)))
+            gen_path = os.path.join( model_path, 'gen_{}.pth'.format(str(latest_epoch).zfill(5)) )
+            dis_path = os.path.join( model_path, 'dis_{}.pth'.format(str(latest_epoch).zfill(5)) )
+            opt_path = os.path.join( model_path, 'opt_{}.pth'.format(str(latest_epoch).zfill(5)) )
             if self.config['global_rank'] == 0:
                 print('Loading model from {}...'.format(gen_path))
-            data = torch.load(gen_path, map_location=self.config['device'])
+            # load sttn
+            data = torch.load( gen_path, map_location=self.config['device'] )
             self.netG.load_state_dict(data['netG'])
-            data = torch.load(dis_path, map_location=self.config['device'])
+            # load discriminator
+            data = torch.load( dis_path, map_location=self.config['device'] )
             self.netD.load_state_dict(data['netD'])
-            data = torch.load(opt_path, map_location=self.config['device'])
+            # load optimizer
+            data = torch.load( opt_path, map_location=self.config['device'] )
             self.optimG.load_state_dict(data['optimG'])
             self.optimD.load_state_dict(data['optimD'])
             self.epoch = data['epoch']
@@ -159,12 +160,9 @@ class Trainer():
     # save parameters every eval_epoch
     def save(self, it):
         if self.config['global_rank'] == 0:
-            gen_path = os.path.join(
-                self.config['save_dir'], 'gen_{}.pth'.format(str(it).zfill(5)))
-            dis_path = os.path.join(
-                self.config['save_dir'], 'dis_{}.pth'.format(str(it).zfill(5)))
-            opt_path = os.path.join(
-                self.config['save_dir'], 'opt_{}.pth'.format(str(it).zfill(5)))
+            gen_path = os.path.join( self.config['save_dir'], 'gen_{}.pth'.format(str(it).zfill(5)) )
+            dis_path = os.path.join( self.config['save_dir'], 'dis_{}.pth'.format(str(it).zfill(5)) )
+            opt_path = os.path.join( self.config['save_dir'], 'opt_{}.pth'.format(str(it).zfill(5)) )
             print('\nsaving model to {} ...'.format(gen_path))
             if isinstance(self.netG, torch.nn.DataParallel) or isinstance(self.netG, DDP):
                 netG = self.netG.module
@@ -178,8 +176,7 @@ class Trainer():
                         'iteration': self.iteration,
                         'optimG': self.optimG.state_dict(),
                         'optimD': self.optimD.state_dict()}, opt_path)
-            os.system('echo {} > {}'.format(str(it).zfill(5),
-                                            os.path.join(self.config['save_dir'], 'latest.ckpt')))
+            os.system('echo {} > {}'.format(str(it).zfill(5), os.path.join(self.config['save_dir'], 'latest.ckpt')))
 
     # train entry
     def train(self):
@@ -200,14 +197,17 @@ class Trainer():
     # process input and calculate loss every training epoch
     def _train_epoch(self, pbar):
         device = self.config['device']
-
+        
         for frames, masks in self.train_loader:
             self.adjust_learning_rate()
             self.iteration += 1
 
             frames, masks = frames.to(device), masks.to(device)
+            # num.of.batches?, number.of.frames?, channels (rgb:3), height, width
             b, t, c, h, w = frames.size()
+            # applies the mask in the image. The annotated object is removed from the image
             masked_frame = (frames * (1 - masks).float())
+            # sttn.InpaintGenerator.forward() passing the masked image and the mask
             pred_img = self.netG(masked_frame, masks)
             frames = frames.view(b*t, c, h, w)
             masks = masks.view(b*t, 1, h, w)
@@ -222,10 +222,9 @@ class Trainer():
             dis_real_loss = self.adversarial_loss(real_vid_feat, True, True)
             dis_fake_loss = self.adversarial_loss(fake_vid_feat, False, True)
             dis_loss += (dis_real_loss + dis_fake_loss) / 2
-            self.add_summary(
-                self.dis_writer, 'loss/dis_vid_fake', dis_fake_loss.item())
-            self.add_summary(
-                self.dis_writer, 'loss/dis_vid_real', dis_real_loss.item())
+            self.add_summary( self.dis_writer, 'loss/dis_vid_fake', dis_fake_loss.item() )
+            self.add_summary( self.dis_writer, 'loss/dis_vid_real', dis_real_loss.item() )
+
             self.optimD.zero_grad()
             dis_loss.backward()
             self.optimD.step()
@@ -235,21 +234,18 @@ class Trainer():
             gan_loss = self.adversarial_loss(gen_vid_feat, True, False)
             gan_loss = gan_loss * self.config['losses']['adversarial_weight']
             gen_loss += gan_loss
-            self.add_summary(
-                self.gen_writer, 'loss/gan_loss', gan_loss.item())
+            self.add_summary( self.gen_writer, 'loss/gan_loss', gan_loss.item() )
 
             # generator l1 loss
             hole_loss = self.l1_loss(pred_img*masks, frames*masks)
             hole_loss = hole_loss / torch.mean(masks) * self.config['losses']['hole_weight']
             gen_loss += hole_loss 
-            self.add_summary(
-                self.gen_writer, 'loss/hole_loss', hole_loss.item())
+            self.add_summary( self.gen_writer, 'loss/hole_loss', hole_loss.item() )
 
             valid_loss = self.l1_loss(pred_img*(1-masks), frames*(1-masks))
             valid_loss = valid_loss / torch.mean(1-masks) * self.config['losses']['valid_weight']
             gen_loss += valid_loss 
-            self.add_summary(
-                self.gen_writer, 'loss/valid_loss', valid_loss.item())
+            self.add_summary( self.gen_writer, 'loss/valid_loss', valid_loss.item() )
             
             self.optimG.zero_grad()
             gen_loss.backward()

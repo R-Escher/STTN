@@ -156,6 +156,7 @@ class MultiHeadedAttention(nn.Module):
     """
     Take in model size and number of heads.
     """
+    # is the number of heads the len of patchsize??? i.e. 4?
 
     def __init__(self, patchsize, d_model):
         super().__init__()
@@ -188,7 +189,7 @@ class MultiHeadedAttention(nn.Module):
                                                       torch.chunk(_key,   len(self.patchsize), dim=1),
                                                       torch.chunk(_value, len(self.patchsize), dim=1)):
             ##
-            ### MATCHING STEP (2): "we first extract spatial patches of shape [r1 x r2 x c] from the 
+            #### MATCHING STEP (2): "we first extract spatial patches of shape [r1 x r2 x c] from the 
             ### query/key/value feature of each frame, and we obtain [N = T x h/r1 x w/r2] patches."
             ##
             out_w, out_h = w // width, h // height
@@ -198,7 +199,7 @@ class MultiHeadedAttention(nn.Module):
             mm is m with its images sizes reduced.
             
             Example: 
-                First patch is (108, 60). if m is (540, 300), mm will contain (540/108 = 5) slices of m.
+                First patch size is (108, 60). if m is (540, 300), mm will contain (540/108 = 5) slices of m.
                 So if, lets say, m is (2, 5, 1, 540, 300),
                 then mm will be (2, 5, 1, 5, 108, 5, 60).
             '''
@@ -225,8 +226,8 @@ class MultiHeadedAttention(nn.Module):
             '''
             y, _ = self.attention(query, key, value, mm)
             ##
-            ### ATTENDING STEP (3): After receiving the output for all patches, we piece all patches
-            ### together and reshape them into T frames with original spatial size h x w x c.
+            #### ATTENDING STEP (3): "After receiving the output for all patches, we piece all patches
+            ### together and reshape them into T frames with original spatial size h x w x c."
             ##
             y = y.view(b, t, out_h, out_w, d_k, height, width)
             y = y.permute(0, 1, 4, 2, 5, 3, 6).contiguous().view(bt, d_k, h, w)

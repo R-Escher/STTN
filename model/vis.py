@@ -161,15 +161,10 @@ class MultiHeadedAttention(nn.Module):
     def __init__(self, patchsize, d_model):
         super().__init__()
         self.patchsize = patchsize
-        self.query_embedding = nn.Conv2d(
-            d_model, d_model, kernel_size=1, padding=0)
-        self.value_embedding = nn.Conv2d(
-            d_model, d_model, kernel_size=1, padding=0)
-        self.key_embedding = nn.Conv2d(
-            d_model, d_model, kernel_size=1, padding=0)
-        self.output_linear = nn.Sequential(
-            nn.Conv2d(d_model, d_model, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.2, inplace=True))
+        self.query_embedding = nn.Conv2d(d_model, d_model, kernel_size=1, padding=0)
+        self.value_embedding = nn.Conv2d(d_model, d_model, kernel_size=1, padding=0)
+        self.key_embedding   = nn.Conv2d(d_model, d_model, kernel_size=1, padding=0)
+        self.output_linear   = nn.Sequential(nn.Conv2d(d_model, d_model, kernel_size=3, padding=1), nn.LeakyReLU(0.2, inplace=True))
         self.attention = Attention()
 
     def forward(self, x, m, b, c):
