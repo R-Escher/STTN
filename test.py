@@ -1,5 +1,3 @@
-%cd /content/STTN
-
 # -*- coding: utf-8 -*-
 import cv2
 import matplotlib.pyplot as plt
@@ -28,7 +26,7 @@ import torch.multiprocessing as mp
 from torchvision import transforms
 
 # My libs
-from core.utils import Stack, ToTorchFormatTensor
+from core.utils import Stack, ToTorchFormatTensor, ZipReader
 
 
 parser = argparse.ArgumentParser(description="STTN")
@@ -36,6 +34,7 @@ parser.add_argument("-v", "--video", type=str, required=True)
 parser.add_argument("-m", "--mask",   type=str, required=True)
 parser.add_argument("-c", "--ckpt",   type=str, required=True)
 parser.add_argument("--model",   type=str, default='sttn')
+parser.add_argument("-s", "--img_sequence", action='store_true')
 args = parser.parse_args()
 
 
@@ -100,29 +99,34 @@ def read_frame_from_videos(vname):
     return frames       
 
 
-def main_worker(args_video, args_mask, args_ckpt, args_model='sttn'):
+#def main_worker(args_video, args_mask, args_ckpt, args_model='sttn'):
+def main_worker():
+
+    # if reading from a folder with images (extracted from a video):
+    if (args.img_sequence):
+        print("Reading from a sequence of images...")
+        frames = read_images(args.video)
+
+    # if reading from a video file:
+    if (not args.img_sequence):
+        print("Reading from a video file...")
+        frames = read_frame_from_videos(args.video)
 
     # set up models 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = importlib.import_module('model.' + args_model)
+    net = importlib.import_module('model.' + args.model)
     model = net.InpaintGenerator().to(device)
-    model_path = args_ckpt
-    data = torch.load(args_ckpt, map_location=device)
+    model_path = args.ckpt
+    data = torch.load(args.ckpt, map_location=device)
     model.load_state_dict(data['netG'])
-    print('loading from: {}'.format(args_ckpt))
+    print('loading from: {}'.format(args.ckpt))
     model.eval()
-
-    # if reading a video, use this:
-    #frames = read_frame_from_videos(args.video)
-    
-    # if reading a folder with images (extracted from a video), use this:
-    frames = read_images(args_video)
     
     video_length = len(frames)
     feats = _to_tensors(frames).unsqueeze(0)*2-1
     frames = [np.array(f).astype(np.uint8) for f in frames]
 
-    masks = read_mask(args_mask)
+    masks = read_mask(args.mask)
     binary_masks = [np.expand_dims((np.array(m) != 0).astype(np.uint8), 2) for m in masks]
     masks = _to_tensors(masks).unsqueeze(0)
     feats, masks = feats.to(device), masks.to(device)
@@ -132,7 +136,7 @@ def main_worker(args_video, args_mask, args_ckpt, args_model='sttn'):
         feats = model.encoder((feats*(1-masks).float()).view(video_length, 3, h, w))
         _, c, feat_h, feat_w = feats.size()
         feats = feats.view(1, video_length, c, feat_h, feat_w)
-    print('loading videos and masks from: {}'.format(args_video))
+    print('loading videos and masks from: {}'.format(args.video))
 
     # completing holes by spatial-temporal transformers
     for f in range(0, video_length, neighbor_stride):
@@ -154,13 +158,13 @@ def main_worker(args_video, args_mask, args_ckpt, args_model='sttn'):
                 else:
                     comp_frames[idx] = comp_frames[idx].astype(
                         np.float32)*0.5 + img.astype(np.float32)*0.5
-    writer = cv2.VideoWriter(f"{args_mask}_result.mp4", cv2.VideoWriter_fourcc(*"mp4v"), default_fps, (w, h))
+    writer = cv2.VideoWriter(f"{args.mask}_result.mp4", cv2.VideoWriter_fourcc(*"mp4v"), default_fps, (w, h))
     for f in range(video_length):
         comp = np.array(comp_frames[f]).astype(
             np.uint8)*binary_masks[f] + frames[f] * (1-binary_masks[f])
         writer.write(cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB))
     writer.release()
-    print('Finish in {}'.format(f"{args_mask}_result.mp4"))
+    print('Finish in {}'.format(f"{args.mask}_result.mp4"))
 
 
 
