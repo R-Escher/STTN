@@ -25,6 +25,17 @@ import matplotlib
 from matplotlib import pyplot as plt
 matplotlib.use('agg')
 
+# #####################################################
+# #####################################################
+
+import subprocess
+def show_gpu_memory(printoutput = 0):
+    """Print the current gpu usage."""
+    result = subprocess.check_output(
+        [   'nvidia-smi', '--query-gpu=memory.used,memory.total',
+            '--format=csv,noheader' ], encoding='utf-8')
+    usedMemory, totalMemory = result.split('\n')[0].split(',')
+    print("\n[{}] GPU Memory used: {} /{}".format(str(printoutput), usedMemory, totalMemory))
 
 # #####################################################
 # #####################################################
