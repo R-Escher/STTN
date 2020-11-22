@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import torchvision.models as models
 from core.spectral_norm import spectral_norm as _spectral_norm
 
+from core import utils
+
 
 class BaseNetwork(nn.Module):
     def __init__(self):
@@ -100,6 +102,9 @@ class InpaintGenerator(BaseNetwork):
 
     def forward(self, masked_frames, masks):
         # extracting features: numofbatches?, numberofframes?, channels (rgb:3), height, width
+
+        #utils.show_gpu_memory(0)
+
         b, t, c, h, w = masked_frames.size()
         masks = masks.view(b*t, 1, h, w)
         # runs through encoder

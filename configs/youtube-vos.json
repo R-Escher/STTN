@@ -1,6 +1,6 @@
 {
     "seed": 2020,
-    "save_dir": "/content/drive/My Drive/Ecomp/Cadeiras/5º Ano/TCC/Transformer Networks/Video Inpaiting (STTN)/(YT)TreinarDoZeroComPesoTPatchGAN/",
+    "save_dir": "/content/drive/MyDrive/Ecomp/Cadeiras/5º Ano/TCC/Transformer Networks/Video Inpaiting (STTN)/",
     "data_loader": {
         "name": "youtube-vos",
         "data_root": "datasets/",
@@ -26,7 +26,7 @@
         "log_step": 100,
         "save_freq": 1e3,
         "valid_freq": 1e3,
-        "iterations": 10e3,
+        "iterations": 20000,
         "niter": 15e4,
         "niter_steady": 30e4
     }

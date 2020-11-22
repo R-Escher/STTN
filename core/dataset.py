@@ -47,9 +47,9 @@ class Dataset(torch.utils.data.Dataset):
             item = self.load_item(0)
         return item
 
-    def load_item(self, index):
+    def load_item(self, index):        
         video_name = self.video_names[index]
-        all_frames = [f"{str(i).zfill(5)}.jpg" for i in range(self.video_dict[video_name])]
+        all_frames = [f"{str(i).zfill(5)}.jpg" for i in range(int(self.video_dict[video_name]))]
         all_masks = create_random_shape_with_random_motion(
             len(all_frames), imageHeight=self.h, imageWidth=self.w)
         ref_index = get_ref_index(len(all_frames), self.sample_length)

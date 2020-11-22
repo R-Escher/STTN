@@ -176,6 +176,7 @@ class Trainer():
                         'iteration': self.iteration,
                         'optimG': self.optimG.state_dict(),
                         'optimD': self.optimD.state_dict()}, opt_path)
+            # TODO(R-Escher): test if it is really saving latest.ckpt every epoch
             os.system('echo {} > {}'.format(str(it).zfill(5), os.path.join(self.config['save_dir'], 'latest.ckpt')))
 
     # train entry
