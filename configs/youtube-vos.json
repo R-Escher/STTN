@@ -1,6 +1,6 @@
 {
     "seed": 2020,
-    "save_dir": "/content/drive/MyDrive/Ecomp/Cadeiras/5º Ano/TCC/Transformer Networks/Video Inpaiting (STTN)/",
+    "save_dir": "/content/drive/MyDrive/STTN/",
     "data_loader": {
         "name": "youtube-vos",
         "data_root": "datasets/",
