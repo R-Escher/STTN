@@ -26,7 +26,7 @@
         "log_step": 100,
         "save_freq": 1e3,
         "valid_freq": 1e3,
-        "iterations": 20000,
+        "iterations": 100000,
         "niter": 15e4,
         "niter_steady": 30e4
     }
