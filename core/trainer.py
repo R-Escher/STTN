@@ -72,7 +72,7 @@ class Trainer():
             self.netD.parameters(), 
             lr=config['trainer']['lr'],
             betas=(self.config['trainer']['beta1'], self.config['trainer']['beta2']))
-        self.load()
+        self.load_latest() #self.load()
 
         if config['distributed']:
             self.netG = DDP(
@@ -126,9 +126,8 @@ class Trainer():
     def load(self):
         model_path = self.config['save_dir']
         
-        # latest.ckpt just stores the epoch it last stopped
-        if os.path.isfile( os.path.join(model_path, 'latest.ckpt') ):
-            latest_epoch = open( os.path.join(model_path, 'latest.ckpt'), 'r' ).read().splitlines()[-1]
+        if os.path.isfile( os.path.join(model_path, 'save.ckpt') ):
+            latest_epoch = open( os.path.join(model_path, 'save.ckpt'), 'r' ).read().splitlines()[-1]
         else:
             ckpts = [os.path.basename(i).split('.pth')[0] for i in glob.glob(
                 os.path.join(model_path, '*.pth'))]
@@ -155,7 +154,34 @@ class Trainer():
         else:
             if self.config['global_rank'] == 0:
                 print(
-                    'Warnning: There is no trained model found. An initialized model will be used.')
+                    'Warning: There is no trained model found. An initialized model will be used.')
+
+    def load_latest(self):
+        ''' Loads latest .pth files. If they don't exist, try to load .pth by iteration number in save.ckpt. '''
+        model_path = self.config['save_dir']
+
+        gen_path = os.path.join( model_path, 'gen_latest.pth' )
+        dis_path = os.path.join( model_path, 'dis_latest.pth' )
+        opt_path = os.path.join( model_path, 'opt_latest.pth' )
+
+        if (os.path.isfile(gen_path) and os.path.isfile(dis_path) and os.path.isfile(opt_path)):
+            if self.config['global_rank'] == 0:
+                print('Loading model from {}...'.format(gen_path))
+            # load sttn
+            data = torch.load( gen_path, map_location=self.config['device'] )
+            self.netG.load_state_dict(data['netG'])
+            # load discriminator
+            data = torch.load( dis_path, map_location=self.config['device'] )
+            self.netD.load_state_dict(data['netD'])
+            # load optimizer
+            data = torch.load( opt_path, map_location=self.config['device'] )
+            self.optimG.load_state_dict(data['optimG'])
+            self.optimD.load_state_dict(data['optimD'])
+            self.epoch = data['epoch']
+            self.iteration = data['iteration']
+        else:
+            print("Latest weight files not found.")
+            self.load()
 
     # save parameters every eval_epoch
     def save(self, it):
@@ -176,8 +202,28 @@ class Trainer():
                         'iteration': self.iteration,
                         'optimG': self.optimG.state_dict(),
                         'optimD': self.optimD.state_dict()}, opt_path)
-            # TODO(R-Escher): test if it is really saving latest.ckpt every epoch
-            os.system('echo {} > {}'.format(str(it).zfill(5), os.path.join(self.config['save_dir'], 'latest.ckpt')))
+            os.system('echo {} > {}'.format(str(it).zfill(5), os.path.join(self.config['save_dir'], 'save.ckpt')))
+
+    def save_latest(self):
+        if self.config['global_rank'] == 0:
+            gen_path = os.path.join( self.config['save_dir'], 'gen_latest.pth' )
+            dis_path = os.path.join( self.config['save_dir'], 'dis_latest.pth' )
+            opt_path = os.path.join( self.config['save_dir'], 'opt_latest.pth' )
+            print('\nsaving latest to {} ...'.format(gen_path))
+            if isinstance(self.netG, torch.nn.DataParallel) or isinstance(self.netG, DDP):
+                netG = self.netG.module
+                netD = self.netD.module
+            else:
+                netG = self.netG
+                netD = self.netD
+            torch.save({'netG': netG.state_dict()}, gen_path)
+            torch.save({'netD': netD.state_dict()}, dis_path)
+            torch.save({'epoch': self.epoch,
+                        'iteration': self.iteration,
+                        'optimG': self.optimG.state_dict(),
+                        'optimD': self.optimD.state_dict()}, opt_path)
+            #os.system('echo {} > {}'.format(str(it).zfill(5), os.path.join(self.config['save_dir'], 'save.ckpt')))
+
 
     # train entry
     def train(self):
@@ -261,6 +307,8 @@ class Trainer():
                 )
 
             # saving models
+            if self.iteration % 50 == 0:
+                self.save_latest()
             if self.iteration % self.train_args['save_freq'] == 0:
                 self.save(int(self.iteration//self.train_args['save_freq']))
             if self.iteration > self.train_args['iterations']:
