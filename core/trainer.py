@@ -209,7 +209,7 @@ class Trainer():
             gen_path = os.path.join( self.config['save_dir'], 'gen_latest.pth' )
             dis_path = os.path.join( self.config['save_dir'], 'dis_latest.pth' )
             opt_path = os.path.join( self.config['save_dir'], 'opt_latest.pth' )
-            print('\nsaving latest to {} ...'.format(gen_path))
+            #print('\nsaving latest to {} ...'.format(gen_path))
             if isinstance(self.netG, torch.nn.DataParallel) or isinstance(self.netG, DDP):
                 netG = self.netG.module
                 netD = self.netD.module
@@ -310,7 +310,7 @@ class Trainer():
             if self.iteration % 50 == 0:
                 self.save_latest()
             if self.iteration % self.train_args['save_freq'] == 0:
-                self.save(int(self.iteration//self.train_args['save_freq']))
+                self.save(int(self.iteration//1000))
             if self.iteration > self.train_args['iterations']:
                 break
 
